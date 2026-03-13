@@ -4,7 +4,7 @@
 # Values are supplied at runtime by the GitHub Actions pipeline via -var flags.
 # ─────────────────────────────────────────────────────────────────────────────
 
-variable "subscription_alias" {
+variable "subscription_alias" { # passed to module as subscription_alias_name
   description = "The alias and display name for the new subscription."
   type        = string
 

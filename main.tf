@@ -19,9 +19,9 @@ terraform {
   # Remote state — replace with your storage account details.
   # The storage account must exist before the first terraform init.
   backend "azurerm" {
-    resource_group_name  = "rg-terraform-state"
-    storage_account_name = "YOUR_STATE_STORAGE_ACCOUNT"
-    container_name       = "tfstate"
+    resource_group_name  = "nzn-t-storage-rg-01"
+    storage_account_name = "castletfstate"
+    container_name       = "azvending"
     # Key is set per-run via -backend-config in the pipeline
     # so each subscription gets its own state file.
   }
@@ -46,7 +46,7 @@ module "sub_vending" {
 
   # Subscription creation
   subscription_alias_enabled = true
-  subscription_alias         = var.subscription_alias
+  subscription_alias_name    = var.subscription_alias
   subscription_display_name  = var.subscription_alias
   subscription_billing_scope = var.billing_scope
   subscription_workload      = var.subscription_workload
