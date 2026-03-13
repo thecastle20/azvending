@@ -1,0 +1,38 @@
+name: Subscription Vending
+
+on:
+  repository_dispatch:
+    types: [subscription-vending-request]
+
+jobs:
+  vend-subscription:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.9"
+
+      - name: Terraform Init
+        run: terraform init
+        env:
+          ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+          ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+
+      - name: Terraform Apply
+        run: |
+          terraform apply -auto-approve \
+            -var="subscription_alias=${{ github.event.client_payload.subscriptionAlias }}" \
+            -var="billing_scope=${{ github.event.client_payload.billingScope }}" \
+            -var="management_group_id=${{ github.event.client_payload.managementGroup }}" \
+            -var="location=${{ github.event.client_payload.location }}" \
+            -var="subscription_workload=${{ github.event.client_payload.workload }}"
+        env:
+          ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+          ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
