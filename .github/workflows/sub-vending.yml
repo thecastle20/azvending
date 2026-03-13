@@ -1,14 +1,43 @@
+# .github/workflows/sub-vending.yml
+#
+# Triggered by n8n via a repository_dispatch event.
+# Provisions an Azure subscription using the ALZ sub-vending Terraform module.
+
 name: Subscription Vending
 
 on:
   repository_dispatch:
     types: [subscription-vending-request]
 
+permissions:
+  contents: read
+  id-token: write # Required for OIDC auth to Azure (recommended over client secret)
+
 jobs:
   vend-subscription:
+    name: Vend — ${{ github.event.client_payload.subscriptionAlias }}
     runs-on: ubuntu-latest
+    environment: subscription-vending # Optional: add an approval gate in GitHub
+
+    env:
+      TF_VAR_subscription_alias: ${{ github.event.client_payload.subscriptionAlias }}
+      TF_VAR_billing_scope: ${{ github.event.client_payload.billingScope }}
+      TF_VAR_management_group_id: ${{ github.event.client_payload.managementGroup }}
+      TF_VAR_location: ${{ github.event.client_payload.location }}
+      TF_VAR_subscription_workload: ${{ github.event.client_payload.workload }}
+      # State key is unique per subscription so runs never share state
+      TF_STATE_KEY: subscriptions/${{ github.event.client_payload.subscriptionAlias }}.tfstate
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.ARM_CLIENT_ID }}
+          tenant-id: ${{ vars.ARM_TENANT_ID }}
+          subscription-id: ${{ vars.ARM_SUBSCRIPTION_ID }}
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -16,23 +45,46 @@ jobs:
           terraform_version: "~1.9"
 
       - name: Terraform Init
-        run: terraform init
+        run: |
+          terraform init \
+            -backend-config="key=${{ env.TF_STATE_KEY }}"
         env:
-          ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
-          ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
-          ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+          ARM_CLIENT_ID: ${{ vars.ARM_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ vars.ARM_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ vars.ARM_SUBSCRIPTION_ID }}
+          ARM_USE_OIDC: true
+
+      - name: Terraform Plan
+        id: plan
+        run: terraform plan -out=tfplan -input=false
+        env:
+          ARM_CLIENT_ID: ${{ vars.ARM_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ vars.ARM_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ vars.ARM_SUBSCRIPTION_ID }}
+          ARM_USE_OIDC: true
 
       - name: Terraform Apply
-        run: |
-          terraform apply -auto-approve \
-            -var="subscription_alias=${{ github.event.client_payload.subscriptionAlias }}" \
-            -var="billing_scope=${{ github.event.client_payload.billingScope }}" \
-            -var="management_group_id=${{ github.event.client_payload.managementGroup }}" \
-            -var="location=${{ github.event.client_payload.location }}" \
-            -var="subscription_workload=${{ github.event.client_payload.workload }}"
+        run: terraform apply -auto-approve tfplan
         env:
-          ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
-          ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
-          ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+          ARM_CLIENT_ID: ${{ vars.ARM_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ vars.ARM_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ vars.ARM_SUBSCRIPTION_ID }}
+          ARM_USE_OIDC: true
+
+      - name: Output Subscription Details
+        run: |
+          echo "### ✅ Subscription Vended" >> $GITHUB_STEP_SUMMARY
+          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| Alias | ${{ env.TF_VAR_subscription_alias }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Request ID | ${{ github.event.client_payload.requestId }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Requester | ${{ github.event.client_payload.requesterEmail }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Team | ${{ github.event.client_payload.teamName }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Location | ${{ env.TF_VAR_location }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Management Group | ${{ env.TF_VAR_management_group_id }} |" >> $GITHUB_STEP_SUMMARY
+          terraform output >> $GITHUB_STEP_SUMMARY
+        env:
+          ARM_CLIENT_ID: ${{ vars.ARM_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ vars.ARM_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ vars.ARM_SUBSCRIPTION_ID }}
+          ARM_USE_OIDC: true
